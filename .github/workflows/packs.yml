@@ -1,6 +1,6 @@
 # Builds the KasseiGo city packs and publishes them in this repository's release "packs".
-# The app downloads them from https://github.com/Melcrea/kasseigo-packs/releases/download/packs/
-# The engine that builds them lives in the private repository Melcrea/kasseigo, read with a
+# The app downloads them from https://github.com/clementmtz/kasseigo-packs/releases/download/packs/
+# The engine that builds them lives in the private repository clementmtz/kasseigo, read with a
 # read-only deploy key (secret SOURCE_DEPLOY_KEY).
 name: City packs
 
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: Melcrea/kasseigo
+          repository: clementmtz/kasseigo
           ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
           path: src
       - uses: dtolnay/rust-toolchain@stable
