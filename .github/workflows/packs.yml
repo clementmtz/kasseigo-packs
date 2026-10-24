@@ -1,0 +1,46 @@
+# Builds the KasseiGo city packs and publishes them in this repository's release "packs".
+# The app downloads them from https://github.com/Melcrea/kasseigo-packs/releases/download/packs/
+# The engine that builds them lives in the private repository Melcrea/kasseigo, read with a
+# read-only deploy key (secret SOURCE_DEPLOY_KEY).
+name: City packs
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # every Monday at 03:00 UTC: OpenStreetMap changes every day
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  packs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Melcrea/kasseigo
+          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          path: src
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool
+      - name: Engine tests
+        working-directory: src
+        run: cargo test --release -p kasseigo_core
+      - name: Packs
+        working-directory: src
+        run: |
+          for city in brussels paris; do
+            backend/packs/build.sh "$city"
+          done
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view packs --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create packs --repo "$GITHUB_REPOSITORY" \
+            --title "City packs" --notes "Streets, places and 3D buildings of each city (from OpenStreetMap), rebuilt every week." --latest=false
+          gh release upload packs src/backend/packs/dist/* --repo "$GITHUB_REPOSITORY" --clobber
