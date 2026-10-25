@@ -8,7 +8,6 @@ published in the release [`packs`](../../releases/tag/packs) and rebuilt every M
 |---|---|
 | `manifest.json` | List of the files below, with their sizes and SHA-256 hashes (checked by the app) |
 | `<city>.kgpack.gz` | Streets graph and places index of the city |
-| `<city>.kgbld.gz` | 3D buildings of the city (footprints, heights), only downloaded with the 3D map |
 
 Data © OpenStreetMap contributors, available under the
 [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/). Extracts from Geofabrik.

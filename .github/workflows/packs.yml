@@ -42,5 +42,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view packs --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create packs --repo "$GITHUB_REPOSITORY" \
-            --title "City packs" --notes "Streets, places and 3D buildings of each city (from OpenStreetMap), rebuilt every week." --latest=false
+            --title "City packs" --notes "Streets and places of each city (from OpenStreetMap), rebuilt every week." --latest=false
           gh release upload packs src/backend/packs/dist/* --repo "$GITHUB_REPOSITORY" --clobber
