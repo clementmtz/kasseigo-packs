@@ -4,6 +4,7 @@ Public repository whose only job is to build the KasseiGo city packs and publish
 `packs`, where the app downloads them:
 `https://github.com/clementmtz/kasseigo-packs/releases/download/packs/` (`manifest.json`, and the
 packs it names: `<city>-<hash>.kgpack.gz`). Workspace-wide rules are in `../CLAUDE.md`: read it too.
+The pack and manifest format is contract 1 of `../kasseigo/docs/workspace/contracts.md`.
 
 ## How it works
 
