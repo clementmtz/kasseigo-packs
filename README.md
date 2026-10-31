@@ -7,7 +7,7 @@ published in the release [`packs`](../../releases/tag/packs) and rebuilt every M
 | File | What it is |
 |---|---|
 | `manifest.json` | List of the files below, with their sizes and SHA-256 hashes (checked by the app) |
-| `<city>.kgpack.gz` | Streets graph and places index of the city |
+| `<city>-<hash>.kgpack.gz` | Streets graph, places index and bicycle parkings of the city (the name changes with its content) |
 
 Data © OpenStreetMap contributors, available under the
 [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/). Extracts from Geofabrik.
