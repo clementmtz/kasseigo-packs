@@ -41,9 +41,12 @@ jobs:
           for city in brussels paris; do
             backend/packs/build.sh "$city"
           done
-      # Each pack under a name of its own content, then the manifest last, then files no manifest
-      # names any more: an app never sees a manifest that does not match its files.
+      # Each pack under a name of its own content, the list signed, then the manifest last, then
+      # files no manifest names any more: an app never sees a manifest that does not match its files.
+      # The list signed with the key set by kasseigo/backend/packs/keygen.sh (secret PACKS_SIGNING_KEY,
+      # given to this step only), by the engine's tool the packs were just built with.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" src/backend/packs/dist
+          PACKS_SIGNING_KEY: ${{ secrets.PACKS_SIGNING_KEY }}
+        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" src/backend/packs/dist --signer src/target/release/kasseigo
