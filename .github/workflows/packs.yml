@@ -2,6 +2,14 @@
 # The app downloads them from https://github.com/clementmtz/kasseigo-packs/releases/download/packs/
 # The engine that builds them lives in the private repository clementmtz/kasseigo, read with a
 # read-only deploy key (secret SOURCE_DEPLOY_KEY).
+#
+# Two jobs: "build" runs the engine and its dependencies' code, with no write access and the signing
+# key out of reach; "publish" holds the signing key and write access, and runs none of that code
+# (publish.py, with the Python standard library and the system's openssl). The sources never go up as
+# an artifact: those of a public repository can be downloaded by anyone, and these are private.
+# Limits: the deploy key (read-only) passes through "build", where a compromised dependency could
+# still look for it in the runner's memory; and it could alter the packs it builds, which publish
+# signs. The signing key is protected, not the packs' content.
 name: City packs
 
 on:
@@ -10,43 +18,120 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+# One at a time: a run deleting old files could delete the new ones of another. Never cancelled:
+# stopping a run half-way through publishing is worse than waiting.
+concurrency:
+  group: packs
+  cancel-in-progress: false
 
 jobs:
-  packs:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
     steps:
-      # Actions pinned to a commit: this job holds the deploy key and writes the files every
-      # phone downloads; a moved tag must not change what runs here.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          repository: clementmtz/kasseigo
-          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
-          path: src
+      # Actions pinned to a commit: these jobs hold the keys and make the files every phone
+      # downloads; a moved tag must not change what runs here.
+      - name: Source
+        id: commit
+        env:
+          DEPLOY_KEY: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          REF: main
+        run: |
+          # By hand and quietly: the checkout action writes the commit's subject in this public log.
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/source
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/source
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=accept-new"
+          git init -q src
+          git -C src remote add origin git@github.com:clementmtz/kasseigo.git
+          git -C src fetch -q --depth 1 origin "$REF"
+          git -C src -c advice.detachedHead=false checkout -q FETCH_HEAD
+          rm -f ~/.ssh/source
+          # The same commit for the publishing job, whatever is pushed meanwhile.
+          echo "sha=$(git -C src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # branch stable
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: src
+          toolchain: 1.94.1 # chosen, not "stable": a new lint must not fail or fill a public log
       - name: Tools
         run: sudo apt-get update && sudo apt-get install -y osmium-tool
       - name: Engine tests
         working-directory: src
-        run: cargo test --release -p kasseigo_core
+        # Out of the log: public here, and errors quote the engine's private sources. A failure is
+        # reproduced locally (`./kg test`).
+        run: cargo test -q --release --locked -p kasseigo_core > "$RUNNER_TEMP/test.log" 2>&1 || { echo "engine tests failed"; exit 1; }
       - name: Packs
         working-directory: src
         run: |
           for city in brussels paris; do
-            backend/packs/build.sh "$city"
+            backend/packs/build.sh "$city" > "$RUNNER_TEMP/$city.log" 2>&1 || { echo "$city failed"; exit 1; }
           done
+      # The packs only: they are public anyway.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dist
+          path: src/backend/packs/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write # to keep the schedule alive, below
+    steps:
+      - name: Source
+        env:
+          DEPLOY_KEY: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          REF: ${{ needs.build.outputs.commit }}
+        run: |
+          # By hand and quietly: the checkout action writes the commit's subject in this public log.
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/source
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/source
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=accept-new"
+          git init -q src
+          git -C src remote add origin git@github.com:clementmtz/kasseigo.git
+          git -C src fetch -q --depth 1 origin "$REF"
+          git -C src -c advice.detachedHead=false checkout -q FETCH_HEAD
+          rm -f ~/.ssh/source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist
+          path: dist
       # Each pack under a name of its own content, the list signed, then the manifest last, then
       # files no manifest names any more: an app never sees a manifest that does not match its files.
       # The list signed with the key set by kasseigo/backend/packs/keygen.sh (secret PACKS_SIGNING_KEY,
-      # given to this step only), by the engine's tool the packs were just built with.
+      # given to this step only). Without the key, or with one that is not the app's, the run fails:
+      # every app would refuse the list.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           PACKS_SIGNING_KEY: ${{ secrets.PACKS_SIGNING_KEY }}
-        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" src/backend/packs/dist --signer src/target/release/kasseigo
+        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" dist --require-signature --app-config src/app/lib/src/config.dart
+      # GitHub stops the schedule of a public repository after 60 days without activity, silently:
+      # the packs would freeze with a manifest that still looks good.
+      - name: Keep the schedule alive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/packs.yml/enable"
+
+  # The packs on the phones stay the last good ones; only an issue here says so (and its e-mail).
+  alert:
+    needs: [build, publish]
+    if: ${{ !cancelled() && (needs.build.result != 'success' || needs.publish.result != 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create -R "$GITHUB_REPOSITORY" --title "City packs: the weekly run failed" \
+            --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed: see which step (the published packs are the last that went through)."

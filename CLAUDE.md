@@ -8,15 +8,21 @@ The pack and manifest format is contract 1 of `../kasseigo/docs/workspace/contra
 
 ## How it works
 
-`.github/workflows/packs.yml` runs every Monday at 03:00 UTC and on demand. It checks out the private
-`kasseigo` repository with a read-only deploy key (secret `SOURCE_DEPLOY_KEY`, set by the owner), runs
-the engine tests, builds each city with `backend/packs/build.sh`, and publishes them with
-`backend/packs/publish.py`: each pack under a name of its own content, the list signed with the
+`.github/workflows/packs.yml` runs every Monday at 03:00 UTC and on demand. One run at a time, in two
+jobs, both reading the private `kasseigo` repository with a read-only deploy key (secret
+`SOURCE_DEPLOY_KEY`, set by the owner), at the same commit: `build` runs the engine tests and builds
+each city with `backend/packs/build.sh` (the engine's dependencies run there, without a shared cache,
+nor the signing key); its only artifact is the packs: **never upload the sources as an artifact, those
+of a public repository can be downloaded by anyone**. `publish`, which runs none of that code, publishes them with
+`backend/packs/publish.py`, after checking the key is the one the app holds, and keeps the schedule
+alive (GitHub stops it after 60 days without activity); a failure opens an issue here. Each pack under a name of its own content, the list signed with the
 secret `PACKS_SIGNING_KEY` (set by `kasseigo/backend/packs/keygen.sh`), then `manifest.json` last,
 then the files that neither it nor the previous manifest names are deleted. An app therefore never
-reads a manifest whose files are missing or not yet replaced. The app compares the published SHA-256
+reads a manifest whose files are missing or not yet replaced. Its logs are public and the engine's
+sources are not: the source is fetched quietly, build and test outputs stay out of the log, and a
+failure is reproduced locally (`./kg test`, `./kg packs`). The app compares the published SHA-256
 with its own and downloads a newer pack in the background. Third-party actions are pinned to a
-commit (this job holds the deploy key): update a pin on purpose, with the version in its comment.
+commit (these jobs hold the keys): update a pin on purpose, with the version in its comment.
 
 The pack builder itself (OSM reading, addresses, streets, places) lives in
 `kasseigo/core/src/build.rs` and `kasseigo/backend/packs/`: change it there, not here.
