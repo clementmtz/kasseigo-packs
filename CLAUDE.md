@@ -35,6 +35,7 @@ The pack builder itself (OSM reading, addresses, streets, places) lives in
 - Check what is published: `gh release view packs -R clementmtz/kasseigo-packs`, then download a pack
   and query it with the engine's command-line tool (`kasseigo search …`, see `kasseigo/CLAUDE.md`).
 - Add a city: its bounding box and Geofabrik extract in `kasseigo/backend/packs/build.sh`, the city in
-  `kasseigo/app/lib/src/cities.dart`, and the city in the loop of `packs.yml` here.
+  `kasseigo/app/lib/src/cities.dart`, `CITIES` in `kasseigo/backend/feedback/worker.js` and the form of
+  `kasseigo-site` (`contracts_test.py` checks all four). Nothing here: the workflow reads the list from `build.sh --list`.
 
 Pack data © OpenStreetMap contributors, ODbL (see `README.md`).

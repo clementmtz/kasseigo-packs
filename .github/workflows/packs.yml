@@ -88,7 +88,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-24.04 # chosen, not "latest": a new image must not change osmium, and with it the packs
+    runs-on: ubuntu-24.04 # chosen, not "latest"
     timeout-minutes: 30
     permissions:
       contents: write
@@ -142,7 +142,7 @@ jobs:
   alert:
     needs: [build, publish]
     if: ${{ !cancelled() && (needs.build.result != 'success' || needs.publish.result != 'success') }}
-    runs-on: ubuntu-24.04 # chosen, not "latest": a new image must not change osmium, and with it the packs
+    runs-on: ubuntu-24.04 # chosen, not "latest"
     permissions:
       issues: write
     steps:
