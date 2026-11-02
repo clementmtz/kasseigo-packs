@@ -14,7 +14,7 @@ jobs, both reading the private `kasseigo` repository with a read-only deploy key
 each city with `backend/packs/build.sh` (the engine's dependencies run there, without a shared cache,
 nor the signing key); its only artifact is the packs: **never upload the sources as an artifact, those
 of a public repository can be downloaded by anyone**. `publish`, which runs none of that code, publishes them with
-`backend/packs/publish.py`, after checking the key is the one the app holds, and keeps the schedule
+`backend/packs/publish.py`, the one script of the source it runs (its SHA-256 pinned in the workflow: a new version of the script needs the new hash here, `contracts_test.py` says so; run with `python3 -I`, the cities read from `build.sh`, not by running it), after checking the key is the one the app holds, and keeps the schedule
 alive (GitHub stops it after 60 days without activity); a failure opens an issue here, or adds to the one still open. `publish.py` refuses packs that look wrong (a city of `build.sh --list` missing, a date to come, a file not the manifest's, a pack under 70 % of the one before it; on purpose: run by hand with `allow_smaller`). The runners are `ubuntu-24.04`, GitHub's host key is pinned, cities are never listed here. Each pack under a name of its own content, the list signed with the
 secret `PACKS_SIGNING_KEY` (set by `kasseigo/backend/packs/keygen.sh`), then `manifest.json` last,
 then the files that neither it nor the previous manifest names are deleted. An app therefore never

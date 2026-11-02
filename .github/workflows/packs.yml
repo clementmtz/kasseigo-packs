@@ -115,10 +115,16 @@ jobs:
         with:
           name: dist
           path: dist
-      # Before the step that holds the key: nothing of the source but publish.py runs with it.
+      # Read, not run: a script of the source run in this job could change what the next steps run
+      # (`$GITHUB_PATH`, `$GITHUB_ENV`), the pin below and the key's step included.
       - name: Cities
         id: cities
-        run: echo "list=$(src/backend/packs/build.sh --list)" >> "$GITHUB_OUTPUT"
+        run: echo "list=$(sed -n 's/^CITIES=(\(.*\))$/\1/p' src/backend/packs/build.sh)" >> "$GITHUB_OUTPUT"
+      # The one script given the key, pinned: a push to the private source alone (the usual flow, and
+      # unprotected) must not be able to change what holds it. A new version changes this line too, in a
+      # push the owner is asked about; `contracts_test.py` says when it is out of date.
+      - name: Check the publishing script
+        run: echo "24acb5aabca8ecd1bf4237b9df3a3b9cc75b1e4ac898e301a22f2da9c5cf6885  src/backend/packs/publish.py" | sha256sum --check --quiet -
       # Each pack under a name of its own content, the list signed, then the manifest last, then
       # files no manifest names any more: an app never sees a manifest that does not match its files.
       # The list signed with the key set by kasseigo/backend/packs/keygen.sh (secret PACKS_SIGNING_KEY,
@@ -130,7 +136,8 @@ jobs:
           PACKS_SIGNING_KEY: ${{ secrets.PACKS_SIGNING_KEY }}
           CITIES: ${{ steps.cities.outputs.list }}
           SMALLER: ${{ inputs.allow_smaller && '--allow-smaller' || '' }}
-        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" dist --require-signature --app-config src/app/lib/src/config.dart --cities "$CITIES" $SMALLER
+        # -I: no module from the script's folder (a `json.py` added beside it would run with the key).
+        run: python3 -I src/backend/packs/publish.py "$GITHUB_REPOSITORY" dist --require-signature --app-config src/app/lib/src/config.dart --cities "$CITIES" $SMALLER
       # GitHub stops the schedule of a public repository after 60 days without activity, silently:
       # the packs would freeze with a manifest that still looks good.
       - name: Keep the schedule alive
