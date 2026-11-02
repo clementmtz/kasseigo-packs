@@ -16,6 +16,11 @@ on:
   schedule:
     - cron: "0 3 * * 1" # every Monday at 03:00 UTC: OpenStreetMap changes every day
   workflow_dispatch:
+    inputs:
+      allow_smaller:
+        description: "A pack much smaller than the one before it is meant (a new format)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,7 +33,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # chosen, not "latest": a new image must not change osmium, and with it the packs
     timeout-minutes: 60
     outputs:
       commit: ${{ steps.commit.outputs.sha }}
@@ -45,7 +50,9 @@ jobs:
           mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/source
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/source
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=accept-new"
+          # GitHub's published key: a fresh runner must not trust whichever it sees first.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > ~/.ssh/github_host
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/github_host"
           git init -q src
           git -C src remote add origin git@github.com:clementmtz/kasseigo.git
           git -C src fetch -q --depth 1 origin "$REF"
@@ -57,7 +64,9 @@ jobs:
         with:
           toolchain: 1.94.1 # chosen, not "stable": a new lint must not fail or fill a public log
       - name: Tools
-        run: sudo apt-get update && sudo apt-get install -y osmium-tool
+        run: |
+          sudo apt-get update && sudo apt-get install -y osmium-tool
+          osmium --version | head -1
       - name: Engine tests
         working-directory: src
         # Out of the log: public here, and errors quote the engine's private sources. A failure is
@@ -66,7 +75,7 @@ jobs:
       - name: Packs
         working-directory: src
         run: |
-          for city in brussels paris; do
+          for city in $(backend/packs/build.sh --list); do
             backend/packs/build.sh "$city" > "$RUNNER_TEMP/$city.log" 2>&1 || { echo "$city failed"; exit 1; }
           done
       # The packs only: they are public anyway.
@@ -79,7 +88,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # chosen, not "latest": a new image must not change osmium, and with it the packs
     timeout-minutes: 30
     permissions:
       contents: write
@@ -94,7 +103,9 @@ jobs:
           mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/source
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/source
-          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=accept-new"
+          # GitHub's published key: a fresh runner must not trust whichever it sees first.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > ~/.ssh/github_host
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/source -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/github_host"
           git init -q src
           git -C src remote add origin git@github.com:clementmtz/kasseigo.git
           git -C src fetch -q --depth 1 origin "$REF"
@@ -104,6 +115,10 @@ jobs:
         with:
           name: dist
           path: dist
+      # Before the step that holds the key: nothing of the source but publish.py runs with it.
+      - name: Cities
+        id: cities
+        run: echo "list=$(src/backend/packs/build.sh --list)" >> "$GITHUB_OUTPUT"
       # Each pack under a name of its own content, the list signed, then the manifest last, then
       # files no manifest names any more: an app never sees a manifest that does not match its files.
       # The list signed with the key set by kasseigo/backend/packs/keygen.sh (secret PACKS_SIGNING_KEY,
@@ -113,7 +128,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PACKS_SIGNING_KEY: ${{ secrets.PACKS_SIGNING_KEY }}
-        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" dist --require-signature --app-config src/app/lib/src/config.dart
+          CITIES: ${{ steps.cities.outputs.list }}
+          SMALLER: ${{ inputs.allow_smaller && '--allow-smaller' || '' }}
+        run: python3 src/backend/packs/publish.py "$GITHUB_REPOSITORY" dist --require-signature --app-config src/app/lib/src/config.dart --cities "$CITIES" $SMALLER
       # GitHub stops the schedule of a public repository after 60 days without activity, silently:
       # the packs would freeze with a manifest that still looks good.
       - name: Keep the schedule alive
@@ -125,7 +142,7 @@ jobs:
   alert:
     needs: [build, publish]
     if: ${{ !cancelled() && (needs.build.result != 'success' || needs.publish.result != 'success') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # chosen, not "latest": a new image must not change osmium, and with it the packs
     permissions:
       issues: write
     steps:
@@ -133,5 +150,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh issue create -R "$GITHUB_REPOSITORY" --title "City packs: the weekly run failed" \
-            --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed: see which step (the published packs are the last that went through)."
+          title="City packs: the weekly run failed"
+          body="Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed: see which step (the published packs are the last that went through). If it failed on the manifest, phones may see no list: run the workflow again."
+          # One issue while it stays open: runs started again add to it.
+          open="$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" -R "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
