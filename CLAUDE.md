@@ -15,7 +15,7 @@ each city with `backend/packs/build.sh` (the engine's dependencies run there, wi
 nor the signing key); its only artifact is the packs: **never upload the sources as an artifact, those
 of a public repository can be downloaded by anyone**. `publish`, which runs none of that code, publishes them with
 `backend/packs/publish.py`, the one script of the source it runs (its SHA-256 pinned in the workflow: a new version of the script needs the new hash here, `contracts_test.py` says so; run with `python3 -I`, the cities read from `build.sh`, not by running it), after checking the key is the one the app holds, and keeps the schedule
-alive (GitHub stops it after 60 days without activity); a failure opens an issue here, or adds to the one still open. `publish.py` refuses packs that look wrong (a city of `build.sh --list` missing, a date to come, a file not the manifest's, a pack under 70 % of the one before it; on purpose: run by hand with `allow_smaller`). The runners are `ubuntu-24.04`, GitHub's host key is pinned, cities are never listed here. Each pack under a name of its own content, the list signed with the
+alive (GitHub stops it after 60 days without activity); a failure opens an issue here, or adds to the one still open. `publish.py` refuses packs that look wrong (a city of `build.sh --list` missing, a date to come, a file not the manifest's, a pack under 70 % of the one before it; on purpose: run by hand with `allow_smaller`). The runners are `ubuntu-24.04`, GitHub's host key is pinned, cities are never listed here. Each pack under a name of its own content, read back from the release against what was sent (sent once more, then nothing published), the list signed with the
 secret `PACKS_SIGNING_KEY` (set by `kasseigo/backend/packs/keygen.sh`), then `manifest.json` last,
 then the files that neither it nor the previous manifest names are deleted. An app therefore never
 reads a manifest whose files are missing or not yet replaced. Its logs are public and the engine's
@@ -32,6 +32,10 @@ The pack builder itself (OSM reading, addresses, streets, places) lives in
 - Publish packs now (after a builder fix pushed to `kasseigo`): ask the owner first (the release is
   public and every user downloads it), then
   `gh workflow run packs.yml -R clementmtz/kasseigo-packs` and watch it with `gh run watch`.
+- A bad pack that passed the checks: phones refuse older lists and packs, so there is no going back
+  to an old file. Fix or revert the builder on `main` of `kasseigo`, ask the owner, then run the
+  workflow (with `allow_smaller` if the good pack is under 70 % of the bad one): a new pack, newer than
+  the bad one, reaches phones at their next launch.
 - Check what is published: `gh release view packs -R clementmtz/kasseigo-packs`, then download a pack
   and query it with the engine's command-line tool (`kasseigo search …`, see `kasseigo/CLAUDE.md`).
 - Add a city: its bounding box and Geofabrik extract in `kasseigo/backend/packs/build.sh`, the city in

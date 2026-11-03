@@ -124,7 +124,7 @@ jobs:
       # unprotected) must not be able to change what holds it. A new version changes this line too, in a
       # push the owner is asked about; `contracts_test.py` says when it is out of date.
       - name: Check the publishing script
-        run: echo "24acb5aabca8ecd1bf4237b9df3a3b9cc75b1e4ac898e301a22f2da9c5cf6885  src/backend/packs/publish.py" | sha256sum --check --quiet -
+        run: echo "c3970994062de13852ca499dbad79210f5b41efbdbf802673f8ad4958bba1a34  src/backend/packs/publish.py" | sha256sum --check --quiet -
       # Each pack under a name of its own content, the list signed, then the manifest last, then
       # files no manifest names any more: an app never sees a manifest that does not match its files.
       # The list signed with the key set by kasseigo/backend/packs/keygen.sh (secret PACKS_SIGNING_KEY,
