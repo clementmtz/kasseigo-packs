@@ -78,6 +78,13 @@ jobs:
           for city in $(backend/packs/build.sh --list); do
             backend/packs/build.sh "$city" > "$RUNNER_TEMP/$city.log" 2>&1 || { echo "$city failed"; exit 1; }
           done
+      - name: Engine test on the packs built
+        working-directory: src
+        # Passes silently without a pack: above, before the build, it checks nothing. Log as above;
+        # "1 passed": a test renamed must not leave nothing checked here.
+        run: |
+          KASSEIGO_TEST_PACK="$PWD/backend/packs/out/brussels.kgpack" cargo test -q --release --locked -p kasseigo_core --lib own_trip_on_brussels > "$RUNNER_TEMP/test-pack.log" 2>&1 || { echo "engine test on the pack failed"; exit 1; }
+          grep -q "1 passed" "$RUNNER_TEMP/test-pack.log" || { echo "engine test on the pack not found"; exit 1; }
       # The packs only: they are public anyway.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

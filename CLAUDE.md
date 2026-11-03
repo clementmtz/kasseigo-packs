@@ -24,6 +24,9 @@ failure is reproduced locally (`./kg test`, `./kg packs`). The app compares the 
 with its own and downloads a newer pack in the background. Third-party actions are pinned to a
 commit (these jobs hold the keys): update a pin on purpose, with the version in its comment.
 
+After the build, the engine's test on real streets runs on the Brussels pack just made
+(`KASSEIGO_TEST_PACK`): before it, without a pack, it passes without checking anything.
+
 The pack builder itself (OSM reading, addresses, streets, places) lives in
 `kasseigo/core/src/build.rs` and `kasseigo/backend/packs/`: change it there, not here.
 
